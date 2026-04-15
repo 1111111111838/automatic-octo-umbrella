@@ -21,36 +21,29 @@ jobs:
         run: |
           if [ -n "${{ github.event.inputs.dynamic_cookies }}" ]; then
             echo "${{ github.event.inputs.dynamic_cookies }}" | base64 --decode > cookies.txt
-            echo "✅ העוגיות נטענו בהצלחה."
+            echo "✅ העוגיות נטענו."
           else
             touch cookies.txt
-            echo "⚠️ לא התקבלו עוגיות, מנסה הורדה ציבורית."
           fi
 
       - name: Execute Download
         run: |
-          # הגדרת שם קובץ פלט
-          OUTPUT="downloaded_file"
-          
-          # שימוש ב-CURL עם הגדרות 'התחפשות' מלאות לדפדפן
-          curl -L -k \
-            --cookie cookies.txt \
-            --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
-            -H "Accept-Language: en-US,en;q=0.9,he;q=0.8" \
-            -H "Referer: https://chat.google.com/" \
-            -H "Origin: https://chat.google.com" \
-            "${{ github.event.inputs.file_url }}" \
-            -o "$OUTPUT"
+          # הפקודה הבאה משתמשת ב-J- (שומר שם מקורי) וב-O (מוריד לפי השם שהשרת נותן)
+          curl -L -k -b cookies.txt \
+               -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
+               -H "Referer: https://chat.google.com/" \
+               -O -J \
+               "${{ github.event.inputs.file_url }}"
 
-          # בדיקה אם הקובץ שירד הוא קטן מדי (סימן שזה דף שגיאה/התחברות)
-          FILESIZE=$(stat -c%s "$OUTPUT")
-          if [ $FILESIZE -lt 5000 ]; then
-             echo "⚠️ אזהרה: הקובץ קטן מאוד ($FILESIZE bytes). ייתכן וזה דף התחברות."
-          fi
+          # זיהוי שם הקובץ שנוצר בפועל (כדי שנדע מה להעלות ל-Artifacts)
+          # אנחנו מחפשים קובץ שהוא לא cookies.txt ולא ה-blank.yml
+          FILENAME=$(ls -1 --ignore=cookies.txt --ignore='*.yml' | head -n 1)
+          echo "DOWNLOADED_NAME=$FILENAME" >> $GITHUB_ENV
+          echo "Detected filename: $FILENAME"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: google-file
-          path: downloaded_file
+          path: ${{ env.DOWNLOADED_NAME }}
           retention-days: 1
