@@ -17,10 +17,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python & gdown
-        run: |
-          pip install gdown
-
       - name: Setup Cookies
         run: |
           if [ -n "${{ github.event.inputs.dynamic_cookies }}" ]; then
@@ -31,13 +27,16 @@ jobs:
 
       - name: Advanced Download
         run: |
-          # ניסיון ראשון עם gdown (חזק מאוד נגד חסימות גוגל)
-          gdown --cookies cookies.txt --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" "${{ github.event.inputs.file_url }}" -O output_file || \
-          # אם נכשל, גיבוי עם wget
-          wget --load-cookies cookies.txt --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" "${{ github.event.inputs.file_url }}" -O output_file
+          # שימוש ב-curl כי הוא טוב יותר מ-wget בטיפול ב-Headers מורכבים
+          curl -L -k -b cookies.txt \
+               -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
+               -H "Referer: https://chat.google.com/" \
+               -H "Origin: https://chat.google.com" \
+               "${{ github.event.inputs.file_url }}" \
+               -o output_file
 
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: downloaded-file
+          name: google-chat-file
           path: output_file
