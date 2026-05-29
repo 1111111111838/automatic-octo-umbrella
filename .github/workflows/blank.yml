@@ -65,8 +65,8 @@ steps:
       server_address: smtp.gmail.com
       server_port: 465
       secure: true
-      username: RS0556780310@GMAIL.COM
-      password: "xylx csco tyat fsuw"
+      username: ${{ secrets.MAIL_USERNAME }}
+      password: ${{ secrets.MAIL_PASSWORD }}
       subject: "GitHub Action Log: ${{ github.workflow }}"
       body: |
         הלוג של הריצה מצורף למייל זה.
@@ -75,6 +75,6 @@ steps:
         ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
       to: RS0556780310@GMAIL.COM
-      from: GitHub Actions <RS0556780310@GMAIL.COM>
+      from: GitHub Actions <${{ secrets.MAIL_USERNAME }}>
       attachments: log.txt
 ```
