@@ -17,6 +17,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
       - name: Setup Cookies
         run: |
           if [ -n "${{ github.event.inputs.dynamic_cookies }}" ]; then
@@ -36,11 +41,26 @@ jobs:
           FILENAME=$(ls -1 --ignore=cookies.txt --ignore='*.yml' | head -n 1)
           echo "DOWNLOADED_NAME=$FILENAME" >> $GITHUB_ENV
 
-      - name: Upload to Google Drive
-        uses: wshwnd/google-drive-upload-action@v1
-        with:
-          credentials: ${{ secrets.GDRIVE_CREDENTIALS }}
-          filename: ${{ env.DOWNLOADED_NAME }}
-          folderId: '1wdXtGCAAKSQMao-ij514dJbGK-UlJGen'
-          name: ${{ env.DOWNLOADED_NAME }}
-          overwrite: true
+      - name: Install Dependencies
+        run: pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib
+
+      - name: Upload to Drive
+        shell: python
+        env:
+          CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
+          FILE_NAME: ${{ env.DOWNLOADED_NAME }}
+          FOLDER_ID: '1wdXtGCAAKSQMao-ij514dJbGK-UlJGen'
+        run: |
+          import os, json
+          from google.oauth2 import service_account
+          from googleapiclient.discovery import build
+          from googleapiclient.http import MediaFileUpload
+
+          creds_dict = json.loads(os.environ['CREDENTIALS'])
+          creds = service_account.Credentials.from_service_account_info(creds_dict)
+          drive_service = build('drive', 'v3', credentials=creds)
+
+          file_metadata = {'name': os.environ['FILE_NAME'], 'parents': [os.environ['FOLDER_ID']]}
+          media = MediaFileUpload(os.environ['FILE_NAME'], resumable=True)
+          drive_service.files().create(body=file_metadata, media_body=media).execute()
+          print("הקובץ הועלה בהצלחה!")
