@@ -47,20 +47,27 @@ jobs:
       - name: Upload to Drive
         shell: python
         env:
-          CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
+          OAUTH_DATA: ${{ secrets.GDRIVE_OAUTH_JSON }}
           FILE_NAME: ${{ env.DOWNLOADED_NAME }}
           FOLDER_ID: '1wdXtGCAAKSQMao-ij514dJbGK-UlJGen'
         run: |
           import os, json
-          from google.oauth2 import service_account
+          from google.oauth2.credentials import Credentials
           from googleapiclient.discovery import build
           from googleapiclient.http import MediaFileUpload
 
-          creds_dict = json.loads(os.environ['CREDENTIALS'])
-          creds = service_account.Credentials.from_service_account_info(creds_dict)
+          data = json.loads(os.environ['OAUTH_DATA'])
+          # אימות מול חשבון גוגל האישי שלך
+          creds = Credentials(
+              None,
+              refresh_token=data['refresh_token'],
+              client_id=data['client_id'],
+              client_secret=data['client_secret'],
+              token_uri="https://oauth2.googleapis.com/token"
+          )
           drive_service = build('drive', 'v3', credentials=creds)
 
           file_metadata = {'name': os.environ['FILE_NAME'], 'parents': [os.environ['FOLDER_ID']]}
           media = MediaFileUpload(os.environ['FILE_NAME'], resumable=True)
           drive_service.files().create(body=file_metadata, media_body=media).execute()
-          print("הקובץ הועלה בהצלחה!")
+          print("🎉 הקובץ הועלה בהצלחה לחשבון האישי שלך!")
