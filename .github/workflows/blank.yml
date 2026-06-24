@@ -22,10 +22,6 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: Install Prerequisites
-        run: |
-          pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib requests beautifulsoup4
-
       - name: Setup Cookies
         run: |
           if [ -n "${{ github.event.inputs.dynamic_cookies }}" ]; then
@@ -34,102 +30,19 @@ jobs:
             touch cookies.txt
           fi
 
-      - name: Execute Smart Deep Download
-        id: downloader
-        shell: python
+      - name: Execute Download
         run: |
-          import os
-          import sys
-          import json
-          import re
-          from urllib.parse import urljoin, urlparse
-          import requests
-          from bs4 import BeautifulSoup
-          from datetime import datetime
+          curl -L -k -b cookies.txt \
+               -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
+               -H "Referer: https://chat.google.com/" \
+               -O -J \
+               "${{ github.event.inputs.file_url }}"
 
-          target_url = "${{ github.event.inputs.file_url }}"
-          os.makedirs('downloaded_site', exist_ok=True)
+          FILENAME=$(ls -1 --ignore=cookies.txt --ignore='*.yml' | head -n 1)
+          echo "DOWNLOADED_NAME=$FILENAME" >> $GITHUB_ENV
 
-          # 1. טעינת עוגיות בפורמט Netscape/לינוקס אם קיימות
-          cookies = {}
-          if os.path.exists('cookies.txt') and os.path.getsize('cookies.txt') > 0:
-              with open('cookies.txt', 'r') as f:
-                  for line in f:
-                      if not line.startswith('#') and line.strip():
-                          parts = line.strip().split('\t')
-                          if len(parts) >= 7:
-                              cookies[parts[5]] = parts[6]
-
-          # 2. הגדרת כותרות דפדפן אנושי אמין (User-Agent)
-          headers = {
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-              "Referer": "https://labs.google/",
-              "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
-          }
-
-          session = requests.Session()
-          session.cookies.update(cookies)
-          session.headers.update(headers)
-
-          print(f"🔗 מתחיל סריקה והורדה של הכתובת: {target_url}")
-
-          try:
-              # הורדת עמוד הבסיס
-              res = session.get(target_url, timeout=15)
-              res.raise_for_status()
-              
-              # שמירת עמוד ה-HTML הראשי
-              with open('downloaded_site/index.html', 'w', encoding='utf-8') as f:
-                  f.write(res.text)
-              print("✅ עמוד הבית הורד בהצלחה.")
-
-              # 3. חילוץ תמונות וקישורים פנימיים באמצעות BeautifulSoup
-              soup = BeautifulSoup(res.text, 'html.parser')
-              media_urls = set()
-
-              # מציאת כל התמונות (img) והסרטונים (video/source)
-              for tag in soup.find_all(['img', 'source', 'video', 'a']):
-                  url_attr = 'src' if tag.name != 'a' else 'href'
-                  url = tag.get(url_attr)
-                  if url:
-                      # הפיכת קישור יחסי לקישור מלא
-                      full_url = urljoin(target_url, url)
-                      # סינון: מוריד רק קבצים ולא קישורי מערכת חיצוניים (כמו פייסבוק או גוגל פונטס)
-                      if any(ext in full_url.lower() for ext in ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.mp4', '.webm', '.pdf', '.json']):
-                          media_urls.add(full_url)
-
-              print(f"🔍 נמצאו {len(media_urls)} קבצי מדיה ותוכן להורדה.")
-
-              # 4. הורדת כל הקבצים שנמצאו
-              for i, m_url in enumerate(media_urls):
-                  try:
-                      parsed = urlparse(m_url)
-                      filename = os.path.basename(parsed.path)
-                      if not filename:
-                          filename = f"file_{i}_{int(datetime.now().timestamp())}"
-                      
-                      # מניעת תווים אסורים בשם הקובץ
-                      filename = re.sub(r'[\\/*?:"<>|]', "", filename)[:100]
-
-                      print(f"📥 מוריד ({i+1}/{len(media_urls)}): {filename}")
-                      r_file = session.get(m_url, timeout=10, stream=True)
-                      if r_file.status_code == 200:
-                          with open(f'downloaded_site/{filename}', 'wb') as f:
-                              for chunk in r_file.iter_content(chunk_size=8192):
-                                  f.write(chunk)
-                  except Exception as e:
-                      print(f"⚠️ דילוג על קובץ עקב שגיאה: {e}")
-
-          except Exception as e:
-              print(f"❌ שגיאה קריטית בסריקת האתר: {e}")
-
-          # 5. כיווץ התיקייה לקובץ ZIP אחד
-          zip_name = f"downloaded_content_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
-          os.system(f"zip -r {zip_name} downloaded_site/")
-          
-          # עדכון משתנה הסביבה לשלב הבא
-          with open(os.environ['GITHUB_ENV'], 'a') as ge:
-              ge.write(f"DOWNLOADED_NAME={zip_name}\n")
+      - name: Install Dependencies
+        run: pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib
 
       - name: Upload to Drive
         shell: python
@@ -144,7 +57,7 @@ jobs:
           from googleapiclient.http import MediaFileUpload
 
           data = json.loads(os.environ['OAUTH_DATA'])
-          
+          # אימות מול חשבון גוגל האישי שלך
           creds = Credentials(
               None,
               refresh_token=data['refresh_token'],
@@ -157,4 +70,4 @@ jobs:
           file_metadata = {'name': os.environ['FILE_NAME'], 'parents': [os.environ['FOLDER_ID']]}
           media = MediaFileUpload(os.environ['FILE_NAME'], resumable=True)
           drive_service.files().create(body=file_metadata, media_body=media).execute()
-          print("🎉 קובץ ה-ZIP המלא והמעוקף הועלה בהצלחה לחשבון האישי שלך!")
+          print("🎉 הקובץ הועלה בהצלחה לחשבון האישי שלך!")
